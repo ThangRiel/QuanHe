@@ -1,0 +1,6 @@
+{
+  "name": "QuanLyMoiQuanHe - Canvas CRM & Relationship Whiteboard",
+  "description": "Bảng trắng vô cực quản lý mối quan hệ cá nhân, sơ đồ liên kết, nhóm đa vai trò, tìm kiếm nâng cao và lịch sử tương tác phong cách Figma.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
