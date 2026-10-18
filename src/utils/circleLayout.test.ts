@@ -104,3 +104,16 @@ test('getCircleEdgePoint accurately computes boundary intercept point for arrow 
   assert.equal(edge.x, 150);
   assert.equal(edge.y, 100);
 });
+
+test('central self node is 3x larger than standard nodes and calculates boundary correctly', () => {
+  const standardRadius = 48;
+  const selfRadius = standardRadius * 3; // 144px (diameter 288px)
+  assert.equal(selfRadius, 144);
+
+  const selfCenter = { x: 680, y: 620 };
+  const memberCenter = { x: 230, y: 250 };
+
+  const intercept = getCircleEdgePoint(selfCenter, selfRadius, memberCenter);
+  const distFromCenter = getDistance(selfCenter, intercept);
+  assert.equal(Math.round(distFromCenter), selfRadius);
+});

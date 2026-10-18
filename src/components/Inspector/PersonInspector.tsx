@@ -62,6 +62,7 @@ export const PersonInspector: React.FC<PersonInspectorProps> = ({
 
   // Tag input state
   const [newTagInput, setNewTagInput] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const age = calculateAge(person.birthDate);
   const birthdayInfo = getDaysUntilBirthday(person.birthDate);
@@ -176,7 +177,14 @@ export const PersonInspector: React.FC<PersonInspectorProps> = ({
           </div>
 
           <div className="flex-1 min-w-0 space-y-1">
-            <h3 className="text-lg font-bold text-white truncate">{person.name}</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-lg font-bold text-white truncate">{person.name}</h3>
+              {person.isSelf && (
+                <span className="px-2 py-0.5 rounded-full bg-indigo-500/25 border border-indigo-400/40 text-[10px] font-bold text-indigo-300">
+                  BẢN THÂN (TÔI)
+                </span>
+              )}
+            </div>
 
             <div className="flex items-center gap-2 text-xs text-neutral-400 tabular-nums">
               <span>{age > 0 ? `${age} tuổi` : 'Chưa rõ tuổi'}</span>
@@ -463,19 +471,41 @@ export const PersonInspector: React.FC<PersonInspectorProps> = ({
             </div>
 
             {/* Danger Zone: Delete Person */}
-            <div className="pt-6 border-t border-neutral-800/80 flex items-center justify-between">
-              <button
-                type="button"
-                className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1.5 hover:underline"
-                onClick={() => {
-                  if (confirm(`Bạn có chắc chắn muốn xóa "${person.name}" khỏi danh bạ?`)) {
-                    onDeletePerson(person.id);
-                  }
-                }}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Xóa người này khỏi sơ đồ</span>
-              </button>
+            <div className="pt-6 border-t border-neutral-800/80">
+              {confirmDelete ? (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 space-y-2">
+                  <p className="text-xs text-rose-300 font-medium">
+                    {person.isSelf
+                      ? 'Bạn có chắc muốn xóa thẻ Bản Thân trung tâm? (Có thể nạp lại qua nút "Dữ liệu mẫu")'
+                      : `Xác nhận xóa "${person.name}" khỏi danh bạ và sơ đồ?`}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-semibold"
+                      onClick={() => onDeletePerson(person.id)}
+                    >
+                      Xóa vĩnh viễn
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-xs"
+                      onClick={() => setConfirmDelete(false)}
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1.5 hover:underline"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa người này khỏi sơ đồ</span>
+                </button>
+              )}
             </div>
           </div>
         )}

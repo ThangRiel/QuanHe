@@ -17,22 +17,37 @@ import { GroupModal } from './components/Modals/GroupModal';
 import { TableView } from './components/Views/TableView';
 import { BirthdaysView } from './components/Views/BirthdaysView';
 
-import { Users, CheckCircle2 } from 'lucide-react';
+import { Users, CheckCircle2, Filter, X } from 'lucide-react';
 
-const STORAGE_KEY = 'crm_whiteboard_relationship_data_v2';
-const LEGACY_KEY = 'crm_whiteboard_relationship_data_v1';
+const STORAGE_KEY = 'crm_whiteboard_relationship_data_v3';
+const LEGACY_KEY_V2 = 'crm_whiteboard_relationship_data_v2';
+const LEGACY_KEY_V1 = 'crm_whiteboard_relationship_data_v1';
 
 function sanitizePeople(raw: unknown): Person[] {
   if (!Array.isArray(raw) || raw.length === 0) return INITIAL_PEOPLE;
-  return raw.map((p, idx) => {
+
+  let list = (raw as any[]).slice();
+  const hasSelf = list.some((p) => p && (p.isSelf || p.id === 'p-self'));
+  if (!hasSelf && INITIAL_PEOPLE[0]?.isSelf) {
+    list = [INITIAL_PEOPLE[0], ...list];
+  }
+
+  return list.map((p, idx) => {
+    const isSelf = Boolean(p.isSelf || p.id === 'p-self');
+    const defaultRadius = isSelf ? 144 : 48;
     const pos =
       p && p.position && typeof p.position.x === 'number' && !isNaN(p.position.x)
         ? p.position
-        : { x: 380 + (idx % 3) * 130, y: 320 + Math.floor(idx / 3) * 130 };
+        : isSelf
+        ? { x: 680, y: 620 }
+        : { x: 280 + (idx % 3) * 130, y: 320 + Math.floor(idx / 3) * 130 };
+
     return {
       ...p,
+      isSelf,
+      groupId: isSelf ? null : p.groupId,
       position: pos,
-      radius: typeof p.radius === 'number' && p.radius >= 30 ? p.radius : 48,
+      radius: isSelf ? 144 : typeof p.radius === 'number' && p.radius >= 30 ? p.radius : defaultRadius,
       groupMemberships: Array.isArray(p.groupMemberships)
         ? p.groupMemberships
         : p.groupId
@@ -76,7 +91,18 @@ function sanitizeGroups(raw: unknown): Group[] {
 
 function sanitizeRelationships(raw: unknown): Relationship[] {
   if (!Array.isArray(raw) || raw.length === 0) return INITIAL_RELATIONSHIPS;
-  return raw.filter((r) => r && r.fromPersonId && r.toPersonId);
+  let rels = (raw as any[]).filter((r) => r && r.fromPersonId && r.toPersonId);
+
+  // If no links to central self exist in saved data, integrate the initial links to p-self
+  const hasSelfRel = rels.some((r) => r.fromPersonId === 'p-self' || r.toPersonId === 'p-self');
+  if (!hasSelfRel) {
+    const selfRels = INITIAL_RELATIONSHIPS.filter(
+      (r) => r.fromPersonId === 'p-self' || r.toPersonId === 'p-self'
+    );
+    rels = [...selfRels, ...rels];
+  }
+
+  return rels;
 }
 
 export default function App() {
@@ -92,9 +118,11 @@ export default function App() {
   // Load data from localStorage or fallback to realistic initial sample
   const [people, setPeople] = useState<Person[]>(() => {
     try {
-      const savedV2 = localStorage.getItem(`${STORAGE_KEY}_people`);
+      const savedV3 = localStorage.getItem(`${STORAGE_KEY}_people`);
+      if (savedV3) return sanitizePeople(JSON.parse(savedV3));
+      const savedV2 = localStorage.getItem(`${LEGACY_KEY_V2}_people`);
       if (savedV2) return sanitizePeople(JSON.parse(savedV2));
-      const legacy = localStorage.getItem(`${LEGACY_KEY}_people`);
+      const legacy = localStorage.getItem(`${LEGACY_KEY_V1}_people`);
       if (legacy) return sanitizePeople(JSON.parse(legacy));
       return INITIAL_PEOPLE;
     } catch {
@@ -104,9 +132,11 @@ export default function App() {
 
   const [groups, setGroups] = useState<Group[]>(() => {
     try {
-      const savedV2 = localStorage.getItem(`${STORAGE_KEY}_groups`);
+      const savedV3 = localStorage.getItem(`${STORAGE_KEY}_groups`);
+      if (savedV3) return sanitizeGroups(JSON.parse(savedV3));
+      const savedV2 = localStorage.getItem(`${LEGACY_KEY_V2}_groups`);
       if (savedV2) return sanitizeGroups(JSON.parse(savedV2));
-      const legacy = localStorage.getItem(`${LEGACY_KEY}_groups`);
+      const legacy = localStorage.getItem(`${LEGACY_KEY_V1}_groups`);
       if (legacy) return sanitizeGroups(JSON.parse(legacy));
       return INITIAL_GROUPS;
     } catch {
@@ -116,9 +146,11 @@ export default function App() {
 
   const [relationships, setRelationships] = useState<Relationship[]>(() => {
     try {
-      const savedV2 = localStorage.getItem(`${STORAGE_KEY}_relationships`);
+      const savedV3 = localStorage.getItem(`${STORAGE_KEY}_relationships`);
+      if (savedV3) return sanitizeRelationships(JSON.parse(savedV3));
+      const savedV2 = localStorage.getItem(`${LEGACY_KEY_V2}_relationships`);
       if (savedV2) return sanitizeRelationships(JSON.parse(savedV2));
-      const legacy = localStorage.getItem(`${LEGACY_KEY}_relationships`);
+      const legacy = localStorage.getItem(`${LEGACY_KEY_V1}_relationships`);
       if (legacy) return sanitizeRelationships(JSON.parse(legacy));
       return INITIAL_RELATIONSHIPS;
     } catch {
@@ -126,33 +158,45 @@ export default function App() {
     }
   });
 
-  // Persistent save
+  // Debounced persistent save to prevent main-thread lag during fast drag interactions
   useEffect(() => {
-    try {
-      localStorage.setItem(`${STORAGE_KEY}_people`, JSON.stringify(people));
-    } catch (e) {
-      console.warn('Storage save error:', e);
-    }
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(`${STORAGE_KEY}_people`, JSON.stringify(people));
+      } catch (e) {
+        console.warn('Storage save error:', e);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
   }, [people]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(`${STORAGE_KEY}_groups`, JSON.stringify(groups));
-    } catch (e) {
-      console.warn('Storage save error:', e);
-    }
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(`${STORAGE_KEY}_groups`, JSON.stringify(groups));
+      } catch (e) {
+        console.warn('Storage save error:', e);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
   }, [groups]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(`${STORAGE_KEY}_relationships`, JSON.stringify(relationships));
-    } catch (e) {
-      console.warn('Storage save error:', e);
-    }
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(`${STORAGE_KEY}_relationships`, JSON.stringify(relationships));
+      } catch (e) {
+        console.warn('Storage save error:', e);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
   }, [relationships]);
 
   // Active top navigation view ('canvas' | 'table' | 'birthdays')
   const [activeView, setActiveView] = useState<ActiveView>('canvas');
+
+  // Filter Bar visibility toggle (hidden by default to keep navbar roomy and clean)
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   // Selections
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
@@ -173,6 +217,17 @@ export default function App() {
     minCloseness: 1,
     sortBy: 'name',
   });
+
+  // Active filter count for badge and indicator
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.searchQuery.trim() !== '') count++;
+    if (filters.selectedGroupId !== null) count++;
+    if (filters.selectedTag !== null) count++;
+    if (filters.birthdayUpcomingOnly) count++;
+    if (filters.minCloseness > 1) count++;
+    return count;
+  }, [filters]);
 
   // Filtered People
   const filteredPeople = useMemo(() => {
@@ -419,9 +474,12 @@ export default function App() {
     localStorage.removeItem(`${STORAGE_KEY}_people`);
     localStorage.removeItem(`${STORAGE_KEY}_groups`);
     localStorage.removeItem(`${STORAGE_KEY}_relationships`);
-    localStorage.removeItem(`${LEGACY_KEY}_people`);
-    localStorage.removeItem(`${LEGACY_KEY}_groups`);
-    localStorage.removeItem(`${LEGACY_KEY}_relationships`);
+    localStorage.removeItem(`${LEGACY_KEY_V2}_people`);
+    localStorage.removeItem(`${LEGACY_KEY_V2}_groups`);
+    localStorage.removeItem(`${LEGACY_KEY_V2}_relationships`);
+    localStorage.removeItem(`${LEGACY_KEY_V1}_people`);
+    localStorage.removeItem(`${LEGACY_KEY_V1}_groups`);
+    localStorage.removeItem(`${LEGACY_KEY_V1}_relationships`);
     setSelectedPersonId(null);
     setSelectedGroupId(null);
     setSelectedRelationshipId(null);
@@ -441,7 +499,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-neutral-950 font-sans text-neutral-100">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-neutral-100 dark:bg-neutral-950 font-sans text-neutral-900 dark:text-neutral-100 transition-colors duration-200">
       {/* 1. Header (Adhering to Top Bar Contract) */}
       <TopBar
         activeView={activeView}
@@ -455,21 +513,52 @@ export default function App() {
         onImportData={handleImportData}
         onResetSampleData={handleResetSampleData}
         upcomingBirthdaysCount={upcomingBirthdaysCount}
+        isFilterOpen={isFilterOpen}
+        onToggleFilter={() => setIsFilterOpen((prev) => !prev)}
+        activeFilterCount={activeFilterCount}
       />
 
-      {/* 2. Filter & Advanced Search Bar */}
-      <FilterBar
-        filters={filters}
-        groups={groups}
-        allTags={allTags}
-        totalCount={people.length}
-        filteredCount={filteredPeople.length}
-        onFilterChange={setFilters}
-        onResetFilters={handleResetFilters}
-      />
+      {/* 2. Collapsible Filter & Advanced Search Bar (Hidden by default, shown when user clicks "Bộ lọc") */}
+      {isFilterOpen && (
+        <FilterBar
+          filters={filters}
+          groups={groups}
+          allTags={allTags}
+          totalCount={people.length}
+          filteredCount={filteredPeople.length}
+          onFilterChange={setFilters}
+          onResetFilters={handleResetFilters}
+          onClose={() => setIsFilterOpen(false)}
+        />
+      )}
 
       {/* 3. Main Viewport */}
       <main className="flex-1 relative flex overflow-hidden">
+        {/* Discrete floating filter pill when filter bar is hidden but filters are actively applied */}
+        {!isFilterOpen && activeFilterCount > 0 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-35 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white text-xs font-medium shadow-xl backdrop-blur-md animate-fade-in">
+            <Filter className="w-3.5 h-3.5 fill-white/20" />
+            <span>
+              Bộ lọc đang bật ({filteredPeople.length}/{people.length} người)
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(true)}
+              className="underline hover:text-indigo-200 ml-1 cursor-pointer font-semibold"
+            >
+              Xem bộ lọc
+            </button>
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              title="Xóa bộ lọc"
+              aria-label="Xóa bộ lọc"
+              className="p-0.5 hover:bg-white/20 rounded-full ml-1 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
         {activeView === 'canvas' && (
           <WhiteboardCanvas
             people={people}

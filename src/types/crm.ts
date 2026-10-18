@@ -18,7 +18,8 @@ export interface Person {
   roleInGroup?: string; // Role in that group
   groupMemberships?: GroupMembership[]; // Kept for backwards compatibility
   position: { x: number; y: number }; // Center coordinate of the circle
-  radius?: number; // Circular node radius (default 48px, diameter 96px)
+  radius?: number; // Circular node radius (default 48px, diameter 96px; 3x for self is 144px)
+  isSelf?: boolean; // True for the user's central card
   nodeSize?: NodeSizeMode;
   colorAccent?: string;
   closeness: 1 | 2 | 3 | 4 | 5;
